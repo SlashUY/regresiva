@@ -276,6 +276,7 @@ def ventana_alerta(mensaje):
     def cerrar(event=None):
         stop_beep.set()
         root.destroy()
+        os._exit(0)
 
     root.bind('<Any-KeyPress>', cerrar)
     root.bind('<Button-1>', cerrar)
