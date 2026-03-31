@@ -26,6 +26,12 @@
 
 ---
 
+## ✦ Vista previa
+
+![Widget cuenta regresiva](preview.jpg)
+
+---
+
 ## ✦ ¿Qué hace?
 
 - **Cuenta regresiva visual** en la consola con dígitos retro en bloques ASCII
@@ -35,26 +41,6 @@
 - **Acciones al terminar**: alerta, bloquear equipo, apagar o reiniciar
 - **Mensaje personalizable** para recordarte qué estabas haciendo
 - Acepta múltiples formatos de tiempo: `5m`, `1h30m`, `01:30:00`, `90`...
-
----
-
-## ✦ Vista previa
-
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║                   ⚡ CUENTA REGRESIVA RETRO ⚡                       ║
-╚══════════════════════════════════════════════════════════════════════╝
-
-        ██████      ██████     ██████     ██████
-           ██          ██         ██         ██
-        █████       █████      █████      █████
-           ██          ██         ██         ██
-        ██████      ██████     ██████     ██████
-
-  [████████████████████████████░░░░░░░░░░░░░░░░░░░░░░]  58%
-
-  Transcurrido: 00:02:05  |  Acción: alerta  |  Ctrl+C cancela
-```
 
 ---
 
