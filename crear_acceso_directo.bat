@@ -23,7 +23,7 @@ if exist "%DESTINO%" (
     echo  [OK] Acceso directo creado en:
     echo       %DESTINO%
     echo.
-    echo  El icono es el reloj del sistema de Windows.
+    echo  El icono es el cronometro del sistema de Windows.
     echo  Podes arrastrarlo a la barra de tareas o al menu Inicio.
 ) else (
     echo.
