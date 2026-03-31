@@ -20,10 +20,12 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     os.system('chcp 65001 >nul 2>&1')
 
+STD_OUTPUT_HANDLE = -11   # constante Win32 para stdout
+
 def enable_ansi():
     try:
         k = ctypes.windll.kernel32
-        k.SetConsoleMode(k.GetStdHandle(-11), 7)
+        k.SetConsoleMode(k.GetStdHandle(STD_OUTPUT_HANDLE), 7)
     except Exception:
         pass
 
@@ -37,8 +39,12 @@ R    = '\033[91m'
 BOLD = '\033[1m'
 RESET= '\033[0m'
 
-# ── Regex pre-compilada ───────────────────────────────────────────────────────
-_RE_ANSI = re.compile(r'\033\[[0-9;]*m')
+# ── Regex pre-compiladas ──────────────────────────────────────────────────────
+_RE_ANSI   = re.compile(r'\033\[[0-9;]*m')
+_RE_HMS    = re.compile(r'^(\d+):(\d+):(\d+)$')
+_RE_MS     = re.compile(r'^(\d+):(\d+)$')
+_RE_COMB   = re.compile(r'^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$')
+_RE_DIGITS = re.compile(r'^(\d+)$')
 
 def strip_ansi(s):
     return _RE_ANSI.sub('', s)
@@ -84,10 +90,6 @@ def segundos_a_display(seg):
     return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 # ── Parsear tiempo ────────────────────────────────────────────────────────────
-_RE_HMS  = re.compile(r'^(\d+):(\d+):(\d+)$')
-_RE_MS   = re.compile(r'^(\d+):(\d+)$')
-_RE_COMB = re.compile(r'^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$')
-
 def parsear_tiempo(texto):
     m = _RE_HMS.match(texto)
     if m:
@@ -98,7 +100,7 @@ def parsear_tiempo(texto):
     m = _RE_COMB.match(texto)
     if m and any(m.groups()):
         return int(m[1] or 0)*3600 + int(m[2] or 0)*60 + int(m[3] or 0)
-    m = re.match(r'^(\d+)$', texto)
+    m = _RE_DIGITS.match(texto)
     return int(m[1]) if m else None
 
 # ── Pantalla de instrucciones ─────────────────────────────────────────────────
@@ -227,17 +229,21 @@ def crear_widget(tiempo_ref, total_seg, widget_stop, mensaje):
         pass
 
 # ── Ventana de alerta ─────────────────────────────────────────────────────────
+_BEEP_FREQS = (880, 660, 990, 550)   # frecuencias de la alarma sonora
+_VOL_60PCT  = int(0xFFFF * 0.6)      # nivel de volumen al 60%
+_AL_GREEN   = '#00FF41'              # color principal de la alerta
+_AL_DIM     = '#007A1F'              # color atenuado de la alerta
+
 def ventana_alerta(mensaje):
     def pitidos(stop_evt):
         winmm = ctypes.windll.winmm
         vol   = ctypes.c_uint32()
         winmm.waveOutGetVolume(0, ctypes.byref(vol))
-        n60 = int(0xFFFF * 0.6)
-        winmm.waveOutSetVolume(0, n60 | (n60 << 16))
-        freqs, idx = [880, 660, 990, 550], 0
+        winmm.waveOutSetVolume(0, _VOL_60PCT | (_VOL_60PCT << 16))
+        idx = 0
         try:
             while not stop_evt.is_set():
-                winsound.Beep(freqs[idx % 4], 180)
+                winsound.Beep(_BEEP_FREQS[idx % 4], 180)
                 time.sleep(0.25)
                 idx += 1
         finally:
@@ -259,18 +265,18 @@ def ventana_alerta(mensaje):
     frame.place(relx=0.5, rely=0.5, anchor='center')
 
     titulo = tk.Label(frame, text='⚡  ¡TIEMPO TERMINADO!  ⚡',
-                      font=('Courier New', 36, 'bold'), fg='#00FF41', bg='black')
+                      font=('Courier New', 36, 'bold'), fg=_AL_GREEN, bg='black')
     titulo.pack(pady=20)
 
     if mensaje:
         tk.Label(frame, text=mensaje, font=('Courier New', 22),
-                 fg='#00FF41', bg='black').pack(pady=10)
+                 fg=_AL_GREEN, bg='black').pack(pady=10)
 
     tk.Label(frame, text='[ PRESIONA CUALQUIER TECLA O CLIC PARA CERRAR ]',
-             font=('Courier New', 13), fg='#007A1F', bg='black').pack(pady=40)
+             font=('Courier New', 13), fg=_AL_DIM, bg='black').pack(pady=40)
 
     def parpadeo():
-        titulo.config(fg='#007A1F' if titulo.cget('fg') == '#00FF41' else '#00FF41')
+        titulo.config(fg=_AL_DIM if titulo.cget('fg') == _AL_GREEN else _AL_GREEN)
         root.after(450, parpadeo)
 
     def cerrar(event=None):
@@ -322,12 +328,12 @@ def ejecutar_accion(accion, mensaje):
         winsound.Beep(880, 800)
         ctypes.windll.user32.LockWorkStation()
     else:
-        cmd  = '/s' if accion == 'apagar' else '/r'
         aviso = f'Cuenta regresiva terminada. {mensaje}'.strip()
-        subprocess.run(['shutdown', cmd, '/t', '30', '/c', aviso])
-        col  = R if accion == 'apagar' else Y
-        verbo = 'Apagando' if accion == 'apagar' else 'Reiniciando'
-        print(f"\n{col}  {verbo} en 30 segundos.  Ejecuta 'shutdown /a' para cancelar.{RESET}\n")
+        subprocess.run(['shutdown', '/s' if accion == 'apagar' else '/r',
+                        '/t', '30', '/c', aviso])
+        print(f"\n{R if accion == 'apagar' else Y}"
+              f"  {'Apagando' if accion == 'apagar' else 'Reiniciando'} en 30 segundos."
+              f"  Ejecuta 'shutdown /a' para cancelar.{RESET}\n")
         time.sleep(5)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
