@@ -5,7 +5,7 @@ echo  Creando acceso directo en el Escritorio...
 
 set "TARGET=%~dp0iniciar.bat"
 set "DESTINO=%USERPROFILE%\Desktop\Cuenta Regresiva.lnk"
-set "ICONO=%SystemRoot%\System32\timedate.cpl"
+set "ICONO=%SystemRoot%\System32\accessibilitycpl.dll"
 
 powershell -NoProfile -Command ^
   "$ws = New-Object -ComObject WScript.Shell; " ^
@@ -13,7 +13,7 @@ powershell -NoProfile -Command ^
   "$sc.TargetPath = 'cmd.exe'; " ^
   "$sc.Arguments = '/c \"%TARGET%\"'; " ^
   "$sc.WorkingDirectory = '%~dp0'; " ^
-  "$sc.IconLocation = '%ICONO%, 0'; " ^
+  "$sc.IconLocation = '%ICONO%, 13'; " ^
   "$sc.Description = 'Cuenta Regresiva Retro'; " ^
   "$sc.WindowStyle = 1; " ^
   "$sc.Save()"
