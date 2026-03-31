@@ -276,6 +276,9 @@ def ventana_alerta(mensaje):
     def cerrar(event=None):
         stop_beep.set()
         root.destroy()
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
         os._exit(0)
 
     root.bind('<Any-KeyPress>', cerrar)

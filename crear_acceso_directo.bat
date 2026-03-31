@@ -11,7 +11,7 @@ powershell -NoProfile -Command ^
   "$ws = New-Object -ComObject WScript.Shell; " ^
   "$sc = $ws.CreateShortcut('%DESTINO%'); " ^
   "$sc.TargetPath = 'cmd.exe'; " ^
-  "$sc.Arguments = '/k \"%TARGET%\"'; " ^
+  "$sc.Arguments = '/c \"%TARGET%\"'; " ^
   "$sc.WorkingDirectory = '%~dp0'; " ^
   "$sc.IconLocation = '%ICONO%, 0'; " ^
   "$sc.Description = 'Cuenta Regresiva Retro'; " ^
