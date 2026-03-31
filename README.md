@@ -34,7 +34,6 @@
 
 ## ✦ ¿Qué hace?
 
-- **Cuenta regresiva visual** en la consola con dígitos retro en bloques ASCII
 - **Widget flotante** con display estilo 7 segmentos que se queda siempre encima
 - **Barra de progreso** con color que cambia: verde → amarillo → rojo
 - **Alarma sonora** al terminar con pitidos y ventana de alerta parpadeante
