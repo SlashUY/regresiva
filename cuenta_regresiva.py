@@ -20,7 +20,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     os.system('chcp 65001 >nul 2>&1')
 
-STD_OUTPUT_HANDLE = -11   # constante Win32 para stdout
+STD_OUTPUT_HANDLE = -11
 
 def enable_ansi():
     try:
@@ -29,7 +29,7 @@ def enable_ansi():
     except Exception:
         pass
 
-_CLS = '\033[2J\033[H'   # limpiar pantalla sin subprocess
+_CLS = '\033[2J\033[H'
 
 # ── Colores ANSI ──────────────────────────────────────────────────────────────
 G    = '\033[92m'
@@ -89,6 +89,21 @@ def segundos_a_display(seg):
     m, s   = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
+def display_cronometro(ms):
+    """Siempre HH:MM:SS.cc para canvas de ancho fijo."""
+    cs  = (ms // 10) % 100
+    seg = ms // 1000
+    h, rem = divmod(seg, 3600)
+    m, s   = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}.{cs:02d}"
+
+def display_cronometro_consola(ms):
+    """HH:MM:SS sin centésimas, para la consola (se actualiza 1 vez/seg)."""
+    seg = ms // 1000
+    h, rem = divmod(seg, 3600)
+    m, s   = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
 # ── Parsear tiempo ────────────────────────────────────────────────────────────
 def parsear_tiempo(texto):
     m = _RE_HMS.match(texto)
@@ -122,7 +137,8 @@ def mostrar_instrucciones():
     linea(f"{G}  FORMATOS DE TIEMPO:{RESET}")
     for fmt, desc in [('30','30 segundos'),('5m','5 minutos'),('1h30m','1 hora y 30 minutos'),
                       ('1h30m20s','1 hora, 30 min y 20 seg'),('01:30:00','formato HH:MM:SS'),
-                      ('01:30','formato MM:SS')]:
+                      ('01:30','formato MM:SS'),
+                      ('crono','cronómetro con centésimas (click para detener)')]:
         linea(f"{DG}    {fmt:<15}{RESET}→  {desc}")
     linea()
     linea(f"{G}  OPCIONES:{RESET}")
@@ -137,6 +153,7 @@ def mostrar_instrucciones():
     linea(f"{DG}    cuenta_regresiva 5m{RESET}")
     linea(f"{DG}    cuenta_regresiva 1h --mensaje \"Reunión\"{RESET}")
     linea(f"{DG}    cuenta_regresiva 01:30:00 --accion bloquear{RESET}")
+    linea(f"{DG}    cuenta_regresiva crono{RESET}")
     linea()
     linea(f"{Y}  Presiona Ctrl+C para cancelar la cuenta en cualquier momento.{RESET}")
     linea()
@@ -152,12 +169,12 @@ PATRON_SEG = {
 }
 
 DW, DH, ST, SG, DSP, CW, PAD = 36, 62, 5, 3, 6, 16, 14
+CW_DOT = (ST - 1) * 2 + 6   # ancho del punto decimal en el canvas
 C_ON  = '#00FF41'
 C_OFF = '#0B2B10'
 C_BG  = '#000000'
 C_LBL = '#00CC33'
 
-# Coordenadas de segmentos pre-computadas relativas a (0, 0)
 _hw = DH // 2
 _SEG_REL = {
     'a': (SG,    0,         DW-SG,  ST),
@@ -175,6 +192,12 @@ def dibujar_digito(canvas, ox, oy, char, c_on=C_ON):
         for cy in (oy + DH//3, oy + 2*DH//3):
             canvas.create_oval(cx-r, cy-r, cx+r, cy+r, fill=c_on, outline='')
         return CW
+    if char == '.':
+        r  = ST - 1
+        cx = ox + r + 1
+        cy = oy + DH - r - 1
+        canvas.create_oval(cx-r, cy-r, cx+r, cy+r, fill=c_on, outline='')
+        return CW_DOT
     activos = PATRON_SEG.get(char, set())
     for seg, (x1, y1, x2, y2) in _SEG_REL.items():
         canvas.create_rectangle(ox+x1, oy+y1, ox+x2, oy+y2,
@@ -183,14 +206,22 @@ def dibujar_digito(canvas, ox, oy, char, c_on=C_ON):
     return DW
 
 def calcular_ancho_canvas(time_str):
-    return sum((CW if c == ':' else DW) + DSP for c in time_str) - DSP + 2*PAD
+    widths = {'.' : CW_DOT, ':': CW}
+    total = sum(widths.get(c, DW) + DSP for c in time_str)
+    return total - DSP + 2*PAD
 
-def crear_widget(tiempo_ref, total_seg, widget_stop, mensaje):
+def crear_widget(tiempo_ref, total_seg, widget_stop, mensaje, es_crono=False, inicio=None):
     root = tk.Tk()
     root.overrideredirect(True)
     root.configure(bg=C_BG)
 
-    canvas_w = calcular_ancho_canvas(segundos_a_display(total_seg))
+    if es_crono:
+        canvas_w = calcular_ancho_canvas(display_cronometro(0))
+        refresco = 33   # ~30fps — centésimas perfectamente fluidas
+    else:
+        canvas_w = calcular_ancho_canvas(segundos_a_display(total_seg))
+        refresco = 200
+
     canvas_h = DH + 2*PAD
     sw       = root.winfo_screenwidth()
     total_h  = canvas_h + (20 if mensaje else 0)
@@ -200,26 +231,46 @@ def crear_widget(tiempo_ref, total_seg, widget_stop, mensaje):
                        bg=C_BG, highlightthickness=1, highlightbackground=C_ON)
     canvas.pack()
 
+    lbl = None
     if mensaje:
-        tk.Label(root, text=mensaje, font=('Courier New', 8),
-                 fg=C_LBL, bg=C_BG).pack(pady=(0, 4))
+        lbl = tk.Label(root, text=mensaje, font=('Courier New', 8),
+                       fg=C_LBL, bg=C_BG)
+        lbl.pack(pady=(0, 4))
 
-    ultimo = [-1]
+    ultimo = [None]
 
     def update_loop():
         if widget_stop.is_set():
             root.quit()
             return
-        t = tiempo_ref[0]
-        if t != ultimo[0]:
-            ultimo[0] = t
-            canvas.delete('all')
+        if es_crono:
+            # El widget calcula el tiempo directamente — sin depender del hilo
+            ms    = int((time.perf_counter() - inicio) * 1000)
+            disp  = display_cronometro(ms)
+            c_seg = C_ON
+        else:
+            t     = tiempo_ref[0]
+            disp  = segundos_a_display(t)
             frac  = t / total_seg if total_seg > 0 else 0
             c_seg = C_ON if frac > 0.5 else ('#FFD700' if frac > 0.2 else '#FF3A20')
+
+        if disp != ultimo[0]:
+            ultimo[0] = disp
+            canvas.delete('all')
             x = PAD
-            for ch in segundos_a_display(t):
+            for ch in disp:
                 x += dibujar_digito(canvas, x, PAD, ch, c_on=c_seg) + DSP
-        root.after(200, update_loop)
+
+        root.after(refresco, update_loop)
+
+    if es_crono:
+        def detener_cronometro(event=None):
+            # Snapshot exacto en el momento del click
+            tiempo_ref[0] = int((time.perf_counter() - inicio) * 1000)
+            widget_stop.set()
+            root.quit()
+        for widget in (root, canvas) + ((lbl,) if lbl else ()):
+            widget.bind('<Button-1>', detener_cronometro)
 
     root.after(0, update_loop)
     root.mainloop()
@@ -229,10 +280,10 @@ def crear_widget(tiempo_ref, total_seg, widget_stop, mensaje):
         pass
 
 # ── Ventana de alerta ─────────────────────────────────────────────────────────
-_BEEP_FREQS = (880, 660, 990, 550)   # frecuencias de la alarma sonora
-_VOL_60PCT  = int(0xFFFF * 0.6)      # nivel de volumen al 60%
-_AL_GREEN   = '#00FF41'              # color principal de la alerta
-_AL_DIM     = '#007A1F'              # color atenuado de la alerta
+_BEEP_FREQS = (880, 660, 990, 550)
+_VOL_60PCT  = int(0xFFFF * 0.6)
+_AL_GREEN   = '#00FF41'
+_AL_DIM     = '#007A1F'
 
 def ventana_alerta(mensaje):
     def pitidos(stop_evt):
@@ -284,13 +335,47 @@ def ventana_alerta(mensaje):
         root.destroy()
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
-            ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+            ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
         os._exit(0)
 
     root.bind('<Any-KeyPress>', cerrar)
     root.bind('<Button-1>', cerrar)
     root.focus_set()
     parpadeo()
+    root.mainloop()
+
+# ── Ventana resultado cronómetro ──────────────────────────────────────────────
+def mostrar_resultado_cronometro(ms):
+    root = tk.Tk()
+    root.configure(bg='black')
+    root.resizable(False, False)
+    w, h = 800, 420
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    root.geometry(f'{w}x{h}+{(sw-w)//2}+{(sh-h)//2}')
+    root.attributes('-topmost', True)
+    root.overrideredirect(True)
+
+    winsound.Beep(880, 300)
+
+    frame = tk.Frame(root, bg='black')
+    frame.place(relx=0.5, rely=0.5, anchor='center')
+
+    tk.Label(frame, text='⏱  TIEMPO REGISTRADO',
+             font=('Courier New', 28, 'bold'), fg=_AL_GREEN, bg='black').pack(pady=20)
+
+    tk.Label(frame, text=display_cronometro(ms),
+             font=('Courier New', 64, 'bold'), fg=_AL_GREEN, bg='black').pack(pady=10)
+
+    tk.Label(frame, text='[ PRESIONA CUALQUIER TECLA O CLIC PARA CERRAR ]',
+             font=('Courier New', 13), fg=_AL_DIM, bg='black').pack(pady=30)
+
+    def cerrar(event=None):
+        root.destroy()
+        os._exit(0)
+
+    root.bind('<Any-KeyPress>', cerrar)
+    root.bind('<Button-1>', cerrar)
+    root.focus_set()
     root.mainloop()
 
 # ── Countdown (hilo de fondo) ─────────────────────────────────────────────────
@@ -319,6 +404,35 @@ def correr_cuenta(total_seg, mensaje, accion, tiempo_ref, widget_stop, cancelado
 
     widget_stop.set()
 
+# ── Cronómetro (hilo de fondo) ────────────────────────────────────────────────
+def correr_cronometro(inicio, mensaje, widget_stop, cancelado):
+    """
+    Solo actualiza la consola (1 vez/seg, sin centésimas).
+    El widget calcula el tiempo directamente con perf_counter — sin leer este hilo.
+    """
+    ultimo_seg = -1
+
+    while not cancelado.is_set() and not widget_stop.is_set():
+        ms_transcurridos = int((time.perf_counter() - inicio) * 1000)
+        seg_actual = ms_transcurridos // 1000
+
+        if seg_actual != ultimo_seg:
+            ultimo_seg = seg_actual
+            disp = display_cronometro_consola(ms_transcurridos)
+
+            print(_CLS, end='', flush=True)
+            print(f"{G}{BOLD}╔{'═'*(ANCHO-2)}╗{RESET}")
+            print(f"{G}{BOLD}║{'  ⏱  CRONÓMETRO  ⏱'.center(ANCHO-2)}║{RESET}")
+            print(f"{G}{BOLD}╚{'═'*(ANCHO-2)}╝{RESET}\n")
+            print(render_big_time(disp, G), end='')
+            print()
+            if mensaje:
+                print(centrar(f"{G}  {mensaje}{RESET}") + '\n')
+            print(f"{DG}  Click en el widget para detener  |  Ctrl+C cancela{RESET}")
+            print(f"{G}{BOLD}{'═'*ANCHO}{RESET}")
+
+        time.sleep(0.1)
+
 # ── Acción final ──────────────────────────────────────────────────────────────
 def ejecutar_accion(accion, mensaje):
     print(_CLS, end='', flush=True)
@@ -343,7 +457,7 @@ def main():
 
     if len(sys.argv) == 1:
         mostrar_instrucciones()
-        print(f"{G}  Ingresa el tiempo (ej: 5m, 30, 1h30m, 00:30:00): {RESET}",
+        print(f"{G}  Ingresa el tiempo (ej: 5m, 30, 1h30m, crono): {RESET}",
               end='', flush=True)
         try:
             entrada = input().strip()
@@ -366,39 +480,73 @@ def main():
         mostrar_instrucciones()
         sys.exit(0)
 
-    total = parsear_tiempo(args.tiempo)
-    if not total or total <= 0:
-        print(f"\n{R}  Error: formato inválido '{args.tiempo}'{RESET}")
-        print(f"{G}  Ejemplos: 30  |  5m  |  1h30m  |  01:30:00{RESET}\n")
-        sys.exit(1)
+    es_crono = args.tiempo.lower() == 'crono'
 
-    tiempo_ref  = [total]
+    tiempo_ref  = [0]
     widget_stop = threading.Event()
     cancelado   = threading.Event()
 
-    def on_sigint(sig, frame):
-        cancelado.set()
-        widget_stop.set()
-        print(f"\n{Y}  Cuenta regresiva cancelada.{RESET}\n")
-        os._exit(0)
-
-    signal.signal(signal.SIGINT, on_sigint)
-
-    # Minimizar consola CMD al arrancar
     hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-    if hwnd:
-        ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
 
-    threading.Thread(
-        target=correr_cuenta,
-        args=(total, args.mensaje, args.accion, tiempo_ref, widget_stop, cancelado),
-        daemon=True
-    ).start()
+    if es_crono:
+        ctypes.windll.kernel32.SetConsoleTitleW('⏱ Cronómetro Retro')
 
-    crear_widget(tiempo_ref, total, widget_stop, args.mensaje)  # hilo principal
+        inicio = time.perf_counter()
 
-    if not cancelado.is_set():
-        ejecutar_accion(args.accion, args.mensaje)
+        def on_sigint(sig, frame):
+            cancelado.set()
+            widget_stop.set()
+            ms_final = int((time.perf_counter() - inicio) * 1000)
+            print(f"\n{G}  ⏱ Tiempo total: {display_cronometro(ms_final)}{RESET}")
+            print(f"{Y}  Cronómetro detenido.{RESET}\n")
+            os._exit(0)
+
+        signal.signal(signal.SIGINT, on_sigint)
+
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 6)
+
+        threading.Thread(
+            target=correr_cronometro,
+            args=(inicio, args.mensaje, widget_stop, cancelado),
+            daemon=True
+        ).start()
+
+        crear_widget(tiempo_ref, 0, widget_stop, args.mensaje, es_crono=True, inicio=inicio)
+
+        if not cancelado.is_set():
+            mostrar_resultado_cronometro(tiempo_ref[0])
+
+    else:
+        total = parsear_tiempo(args.tiempo)
+        if not total or total <= 0:
+            print(f"\n{R}  Error: formato inválido '{args.tiempo}'{RESET}")
+            print(f"{G}  Ejemplos: 30  |  5m  |  1h30m  |  01:30:00  |  crono{RESET}\n")
+            sys.exit(1)
+
+        tiempo_ref = [total]
+
+        def on_sigint(sig, frame):
+            cancelado.set()
+            widget_stop.set()
+            print(f"\n{Y}  Cuenta regresiva cancelada.{RESET}\n")
+            os._exit(0)
+
+        signal.signal(signal.SIGINT, on_sigint)
+
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 6)
+
+        threading.Thread(
+            target=correr_cuenta,
+            args=(total, args.mensaje, args.accion, tiempo_ref, widget_stop, cancelado),
+            daemon=True
+        ).start()
+
+        crear_widget(tiempo_ref, total, widget_stop, args.mensaje)
+
+        if not cancelado.is_set():
+            ejecutar_accion(args.accion, args.mensaje)
 
 
 if __name__ == '__main__':

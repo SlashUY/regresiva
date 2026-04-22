@@ -40,6 +40,7 @@
 - **Acciones al terminar**: alerta, bloquear equipo, apagar o reiniciar
 - **Mensaje personalizable** para recordarte qué estabas haciendo
 - Acepta múltiples formatos de tiempo: `5m`, `1h30m`, `01:30:00`, `90`...
+- **Modo cronómetro** (`crono`) con centésimas de segundo en tiempo real — click en el widget para detener y ver el tiempo registrado
 
 ---
 
@@ -96,6 +97,22 @@ python cuenta_regresiva.py 90 --accion bloquear
 | `1h30m20s` | 1 hora, 30 min y 20 seg |
 | `01:30:00` | formato HH:MM:SS |
 | `01:30` | formato MM:SS |
+| `crono` | modo cronómetro con centésimas |
+
+---
+
+## ✦ Modo cronómetro
+
+```bash
+python cuenta_regresiva.py crono
+python cuenta_regresiva.py crono --mensaje "Vuelta 1"
+```
+
+Inicia un cronómetro que cuenta hacia arriba mostrando `HH:MM:SS.cc` en el widget flotante.
+
+- Las centésimas se calculan directamente con el reloj del sistema — sin drift
+- **Click en el widget** para detener y ver el tiempo registrado
+- **Ctrl+C** para cancelar (muestra el tiempo en consola)
 
 ---
 
@@ -118,6 +135,8 @@ Regresiva/
 ├── iniciar.bat               # Launcher con consola configurada
 └── crear_acceso_directo.bat  # Crea ícono en el Escritorio
 ```
+
+---
 
 ---
 
